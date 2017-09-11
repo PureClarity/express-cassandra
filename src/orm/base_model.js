@@ -572,7 +572,7 @@ BaseModel._create_table = function f(callback) {
                 } else if (normalizedDBSchema.materialized_views[dbViewName].key.indexOf(fieldName) > -1) {
                   dependentViews.push(dbViewName);
                 } else if (normalizedDBSchema.materialized_views[dbViewName].key[0] instanceof Array
-                            && normalizedDBSchema.materialized_views[dbViewName].key[0].indexOf(fieldName) > -1) {
+                  && normalizedDBSchema.materialized_views[dbViewName].key[0].indexOf(fieldName) > -1) {
                   dependentViews.push(dbViewName);
                 }
               });
@@ -768,8 +768,8 @@ BaseModel._create_table_query = function f(tableName, schema) {
 
   for (let field = 0; field < clusteringKey.length; field++) {
     if (schema.clustering_order
-        && schema.clustering_order[clusteringKey[field]]
-        && schema.clustering_order[clusteringKey[field]].toLowerCase() === 'desc') {
+      && schema.clustering_order[clusteringKey[field]]
+      && schema.clustering_order[clusteringKey[field]].toLowerCase() === 'desc') {
       clusteringOrder.push(util.format('"%s" DESC', clusteringKey[field]));
     } else {
       clusteringOrder.push(util.format('"%s" ASC', clusteringKey[field]));
@@ -820,8 +820,8 @@ BaseModel._create_materialized_view_query = function f(tableName, viewName, view
 
   for (let field = 0; field < clusteringKey.length; field++) {
     if (viewSchema.clustering_order
-        && viewSchema.clustering_order[clusteringKey[field]]
-        && viewSchema.clustering_order[clusteringKey[field]].toLowerCase() === 'desc') {
+      && viewSchema.clustering_order[clusteringKey[field]]
+      && viewSchema.clustering_order[clusteringKey[field]].toLowerCase() === 'desc') {
       clusteringOrder.push(util.format('"%s" DESC', clusteringKey[field]));
     } else {
       clusteringOrder.push(util.format('"%s" ASC', clusteringKey[field]));
@@ -2331,6 +2331,7 @@ BaseModel.prototype.save = function fn(options, callback) {
     };
   }
 
+
   const queryOptions = { prepare: options.prepare };
   if (options.consistency) queryOptions.consistency = options.consistency;
   if (options.fetchSize) queryOptions.fetchSize = options.fetchSize;
@@ -2379,6 +2380,75 @@ BaseModel.prototype.save = function fn(options, callback) {
 
   return {};
 };
+
+
+
+/**
+ * Implicit {return_query: true} in options.
+ * No checks - just produces raw {query,params} record
+ */
+BaseModel.prototype.prepare_batch_insert_fast = function fn(options, callback) {
+  if (arguments.length === 1 && typeof options === 'function') {
+    callback = options;
+    options = {};
+  }
+
+  const identifiers = [];
+  const values = [];
+  const properties = this.constructor._properties;
+  const schema = properties.schema;
+
+  const defaults = {
+    prepare: true,
+  };
+
+  options = _.defaultsDeep(options, defaults);
+
+  const queryParams = [];
+
+  let schemaFieldKeys = Object.keys(schema.fields);
+  for (let i = 0, j = schemaFieldKeys.length; i < j; i++) {
+    let f = schemaFieldKeys[i];
+
+    if (schema.fields[f].virtual) continue;
+
+    let fieldvalue = this[f];
+    if (fieldvalue === undefined) {
+      fieldvalue = this._get_default_value(f);
+    }
+    if (fieldvalue === undefined) {
+      continue;
+    }
+
+    identifiers.push(util.format('"%s"', f));
+
+    var dbVal = this.constructor._get_db_value_expression(f, fieldvalue);
+    if (_.isPlainObject(dbVal) && dbVal.query_segment) {
+      values.push(dbVal.query_segment);
+      queryParams.push(dbVal.parameter);
+    } else {
+      values.push(dbVal);
+    }
+
+  }
+
+  let query = util.format(
+    'INSERT INTO "%s" ( %s ) VALUES ( %s )',
+    properties.table_name,
+    identifiers.join(' , '),
+    values.join(' , '),
+  );
+
+  if (options.if_not_exist) query += ' IF NOT EXISTS';
+  if (options.ttl) query += util.format(' USING TTL %s', options.ttl);
+
+  query += ';';
+
+  return {
+    query,
+    params: queryParams
+  };
+}
 
 BaseModel.prototype.delete = function f(options, callback) {
   if (arguments.length === 1 && typeof options === 'function') {

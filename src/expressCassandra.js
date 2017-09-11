@@ -154,8 +154,10 @@ CassandraClient.prototype.doBatch = function f(queries, options, callback) {
       query: queries[i].query,
       params: queries[i].params,
     });
-    const beforeHookAsync = Promise.promisify(queries[i].before_hook);
-    beforeHooks.push(beforeHookAsync());
+    if (queries[i].before_hook) {
+      const beforeHookAsync = Promise.promisify(queries[i].before_hook);
+      beforeHooks.push(beforeHookAsync());
+    }
   }
 
   let batchResult;
@@ -175,8 +177,10 @@ CassandraClient.prototype.doBatch = function f(queries, options, callback) {
       batchResult = response;
       const afterHooks = [];
       for (let i = 0; i < queries.length; i++) {
-        const afterHookAsync = Promise.promisify(queries[i].after_hook);
-        afterHooks.push(afterHookAsync());
+        if (queries[i].after_hook) {
+          const afterHookAsync = Promise.promisify(queries[i].after_hook);
+          afterHooks.push(afterHookAsync());
+        }
       }
       return Promise.all(afterHooks);
     })
